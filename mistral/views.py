@@ -38,7 +38,7 @@ def extract_context_from_prompt(prompt):
     words = [word.lower() for word in word_tokenize(prompt) if word.isalnum() and word.lower() not in stop_words]
     
     # Extracting context keywords based on specific criteria
-    context_keywords = [word for word in words ]  # Update to include all words in the context
+    context_keywords = [word for word in words ]  
     
     return ' '.join(context_keywords)
 
@@ -121,7 +121,10 @@ def retrieve_rules_by_tag(tag):
 
 
 def calculate_similarity(embedding1, embedding2):
+      # cosine_similarity returns a tensor, so we extract the value using item() and return it as a float value
+      # tensor is a multi-dimensional matrix containing elements of a single data type.
     similarity_score = torch.nn.functional.cosine_similarity(embedding1.unsqueeze(0), embedding2.unsqueeze(0)).item()
+   
     return similarity_score
 
 
@@ -191,6 +194,7 @@ def generate_text(request):
             
             context = extract_context_from_prompt(prompt)
             print(context)
+            print(tag)
             #TODO: Add more phrases to identify rule-related prompts
             phrases = ["give rules", "rules"]
 
