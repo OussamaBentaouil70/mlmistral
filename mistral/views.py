@@ -1,4 +1,5 @@
-
+from dotenv import load_dotenv
+load_dotenv() ## loading all the environment variables
 from urllib.request import HTTPBasicAuthHandler
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -16,6 +17,7 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import torch
 from sentence_transformers import SentenceTransformer
+import os
 
 nltk.download('punkt')
 nltk.download('stopwords')
@@ -28,7 +30,8 @@ MODEL_NAME = "mistral"
 # Define the URL of the Elasticsearch database
 ELASTICSEARCH_URL = "https://localhost:9200/rules/_search"
 USERNAME = "elastic"
-PASSWORD = "Nfk6eckgfUx0jhTcPb_G"
+PASSWORD = os.getenv('ELASTIC_PASSWORD')
+
 
 
 # Function to extract context keywords from the prompt
@@ -71,55 +74,9 @@ def retrieve_rules_by_tag(tag):
         return rules
     else:
         return None
-# Function to retrieve rules based on a specific tag ignoring SSL verification
-# Function to retrieve rules based on a specific context within the description field and matching tag
-# def retrieve_rules_by_context(context, tag):
-#     # Prepare the query to find similar context within the description field and filter by tag
-#     query = {
-#         "query": {
-#             "bool": {
-#                 "must": [
-#                     {
-#                         "match": {
-#                            "description": {
-#                                "query": context,
-#                                "operator": "and"
-#                             }
-#                         }
-#                     },
-#                     {
-#                         "match": {
-#                             "tag": tag
-#                         }
-#                     }
-#                 ]
-#             }
-#         }
-#     }
-
-#     # Send a POST request to Elasticsearch without SSL verification
-#     response = requests.post(ELASTICSEARCH_URL, json=query, auth=HTTPBasicAuth(USERNAME, PASSWORD), verify=False)
-
-#     # Check if the request was successful
-#     if response.status_code == 200:
-#         # Parse the response JSON and extract the relevant data
-#         response_data = response.json()
-#         rules = [hit['_source'] for hit in response_data.get('hits', {}).get('hits', [])]
-
-#         # Check if any rules were found with non-matching tags
-#         mismatched_rules = [rule for rule in rules if rule.get('tag') != tag]
-        
-#         if mismatched_rules:
-#             error_message = f"Rules with mismatched tags found: {', '.join([rule['description'] for rule in mismatched_rules])}"
-#             return {'error': error_message}
-        
-#         return rules
-#     else:
-#         return None
 
 
-
-
+# Function to calculate the cosine similarity between two embeddings
 def calculate_similarity(embedding1, embedding2):
       # cosine_similarity returns a tensor, so we extract the value using item() and return it as a float value
       # tensor is a multi-dimensional matrix containing elements of a single data type.
@@ -166,17 +123,6 @@ def retrieve_rule_by_similarity(prompt, tag):
     return None
 
 
-# # Function to match the prompt with rules descriptions and return the corresponding rule
-# def match_prompt_with_rules(prompt, rules):
-#     matched_rule = None
-#     print(rules)
-#     for rule in rules:
-#         if prompt.lower() in rule['description'].lower():
-#             print(rule)
-#             matched_rule = rule
-#             break
-#     return matched_rule
-
 
 
 # View to generate text using Mistral API and retrieve rules based on a tag matching the prompt
@@ -209,12 +155,39 @@ def generate_text(request):
             if not rules:
                 return JsonResponse({'error': 'You are not allowed to view this rule'}, status=500)
 
-            # # Find the rule that matches the context of the prompt in the descriptions
-            # matched_rule = match_prompt_with_rules(prompt, rules)
 
-            # if matched_rule is not None and matched_rule.get('tag') != tag:
-            #     return JsonResponse({'error': 'You are not allowed to view this rule'}, status=403)
+            # Prepare payload for the Mistral API request
+            payload = {
+                'model': MODEL_NAME,
+                'prompt': prompt
+            }
 
+            # Send a POST request to the Mistral API
+            response = requests.post(OLLAMA_MISTRAL_API_URL, json=payload, stream=True)
+
+            if response.status_code != 200:
+                return JsonResponse({'error': f'API request failed with status code {response.status_code}'}, status=500)
+
+        
+            return JsonResponse( rules,safe=False,  status=200)
+
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    else:
+        return JsonResponse({'error': 'Only POST requests are allowed'}, status=405)
+
+
+@csrf_exempt
+def get_response_from_prompt(request):
+    if request.method == 'POST':
+        try:
+            # Parse the JSON data from the request body
+            data = json.loads(request.body.decode('utf-8'))
+            prompt = data.get('prompt')
+
+            if not prompt:
+                return JsonResponse({'error': 'Missing prompt'}, status=400)
+            
             # Prepare payload for the Mistral API request
             payload = {
                 'model': MODEL_NAME,
@@ -236,8 +209,8 @@ def generate_text(request):
 
             transformed_response = transform_text(combined_response)
 
-            # Return the transformed response along with the matched rule as JSON
-            return JsonResponse( rules,safe=False,  status=200)
+            # Return the transformed response as JSON
+            return JsonResponse({'response': transformed_response}, status=200)
 
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
