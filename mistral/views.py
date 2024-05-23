@@ -177,6 +177,7 @@ def generate_text(request):
         return JsonResponse({'error': 'Only POST requests are allowed'}, status=405)
 
 
+# View to generate text using Mistral API and retrieve rules based on a tag matching the prompt
 @csrf_exempt
 def get_response_from_prompt(request):
     if request.method == 'POST':
