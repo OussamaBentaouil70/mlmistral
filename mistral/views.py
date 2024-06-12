@@ -33,7 +33,7 @@ OLLAMA_MISTRAL_API_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "mistral"
 
 # Define the URL of the Elasticsearch database
-ELASTICSEARCH_URL = "https://localhost:9200/rules/_search"
+ELASTICSEARCH_URL = "https://localhost:9200/rules_index/_search"
 USERNAME = "elastic"
 PASSWORD = os.getenv('ELASTIC_PASSWORD')
 
@@ -211,7 +211,7 @@ def retrieve_rules_by_tag(tag):
     # Send a POST request to Elasticsearch with basic authentication
     response = requests.post(ELASTICSEARCH_URL, json=query, auth=HTTPBasicAuth(USERNAME, PASSWORD),  verify=False)
 
-    # Check if the request was successful   
+    # Check if the request was successful       
     if response.status_code == 200:
         # Parse the response JSON and extract the relevant data
         response_data = response.json()
