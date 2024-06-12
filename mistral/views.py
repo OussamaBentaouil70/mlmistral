@@ -1,4 +1,6 @@
+from django.conf import settings
 from dotenv import load_dotenv
+import jwt
 load_dotenv() ## loading all the environment variables
 from urllib.request import HTTPBasicAuthHandler
 from django.shortcuts import render
@@ -18,6 +20,15 @@ from nltk.tokenize import word_tokenize
 import torch
 from sentence_transformers import SentenceTransformer
 import os
+from django.core.serializers import serialize
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth.models import User
+from rest_framework.decorators import api_view
+from .models import Owner, Member
+
+from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import make_password, check_password
 
 nltk.download('punkt')
 nltk.download('stopwords')
@@ -31,6 +42,146 @@ MODEL_NAME = "mistral"
 ELASTICSEARCH_URL = "https://localhost:9200/rules/_search"
 USERNAME = "elastic"
 PASSWORD = os.getenv('ELASTIC_PASSWORD')
+
+
+
+def extract_token_from_headers(view_func):
+    def _wrapped_view(request, *args, **kwargs):
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            return JsonResponse({'error': 'Token not provided'}, status=401)
+
+        try:
+            decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+            request.user = decoded
+        except jwt.ExpiredSignatureError:
+            return JsonResponse({'error': 'Token has expired'}, status=401)
+        except jwt.InvalidTokenError:
+            return JsonResponse({'error': 'Invalid token'}, status=400)
+
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped_view
+
+
+User = get_user_model()
+
+def get_user_model(role):
+    return Owner if role == 'owner' else Member
+
+
+
+
+
+
+@csrf_exempt
+def register_user(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            username = data.get('username')
+            full_name = data.get('full_name')
+            email = data.get('email')
+            password = data.get('password')
+            address = data.get('address')
+            bio = data.get('bio')
+            tag = data.get('tag')
+            role = data.get('role')
+            
+
+            if not username:
+                return JsonResponse({'error': 'Username is required'}, status=400)
+
+            Model = get_user_model(role)
+            if Model.objects.filter(username=username).exists():
+                return JsonResponse({'error': 'Username already exists'}, status=400)
+
+            if not password or len(password) < 6:
+                return JsonResponse({'error': 'Password is required and should be at least 6 characters long'}, status=400)
+
+            if not email:
+                return JsonResponse({'error': 'Email is required'}, status=400)
+
+            if Model.objects.filter(email=email).exists():
+                return JsonResponse({'error': 'Email already exists'}, status=400)
+
+            hashed_password = make_password(password)
+
+            new_user = Model.objects.create(
+                username=username,
+                email=email,
+                password=hashed_password,
+                role=role,
+                full_name=full_name,
+                address=address,
+                bio=bio,
+                tag=tag
+            )
+
+            return JsonResponse({
+                'username': new_user.username, 
+                'email': new_user.email, 
+                'role': new_user.role, 
+                'full_name': new_user.full_name,
+                'address': new_user.address,
+                'bio': new_user.bio,
+                'tag': new_user.tag
+                }, status=201)
+        except Exception as e:
+            print("Error while registering user", e)
+            return JsonResponse({'error': 'Internal server error'}, status=500)
+
+@csrf_exempt
+def login(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            email = data.get('email')
+            password = data.get('password')
+
+            if not email or not password:
+                return JsonResponse({'error': 'Email and password are required'}, status=400)
+
+            user = Member.objects.filter(email=email).first() or Owner.objects.filter(email=email).first()
+
+            if not user or not check_password(password, user.password):
+                return JsonResponse({'error': 'Invalid email or password'}, status=400)
+
+            token_payload = {
+                "username": user.username,
+                 "fullname": user.full_name,
+                'email': user.email,
+                "tag": user.tag,
+                "role": user.role,
+                "address": user.address,
+                "bio": user.bio
+            }
+
+            token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm='HS256')
+
+            response_data = {
+                'token': token,
+                'user': {
+                    "username": user.username,
+                    "fullname": user.full_name,
+                    "address": user.address,
+                    "bio": user.bio,
+                    'tag': user.tag,
+                    'email': user.email,
+                    'role': user.role,
+                    
+                }
+            }
+
+            response = JsonResponse(response_data)
+            response.set_cookie('token', token, httponly=True)
+            
+            return response
+        except Exception as e:
+            print("Error while logging in user", e)
+            return JsonResponse({'error': 'Internal server error'}, status=500)
+
+
 
 
 
@@ -127,14 +278,17 @@ def retrieve_rule_by_similarity(prompt, tag):
 
 # View to generate text using Mistral API and retrieve rules based on a tag matching the prompt
 @csrf_exempt
+@extract_token_from_headers
 def generate_text(request):
+    user = request.user
+    print(user)
     if request.method == 'POST':
         try:
             # Parse the JSON data from the request body
             data = json.loads(request.body.decode('utf-8'))
             prompt = data.get('prompt')
-            tag = data.get('tag')  # Extract the tag from the request
-
+            tag = user.get("tag")  # Extract the tag from the request
+            print(tag)
             if not prompt:
                 return JsonResponse({'error': 'Missing prompt'}, status=400)
             
@@ -217,3 +371,5 @@ def get_response_from_prompt(request):
             return JsonResponse({'error': str(e)}, status=500)
     else:
         return JsonResponse({'error': 'Only POST requests are allowed'}, status=405)
+
+
