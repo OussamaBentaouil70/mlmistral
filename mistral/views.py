@@ -2,7 +2,6 @@ from django.conf import settings
 from dotenv import load_dotenv
 import jwt
 load_dotenv() ## loading all the environment variables
-from urllib.request import HTTPBasicAuthHandler
 from django.shortcuts import render
 from django.http import JsonResponse
 # prevent unauthorized POST requests from malicious websites.
@@ -20,13 +19,8 @@ from nltk.tokenize import word_tokenize
 import torch
 from sentence_transformers import SentenceTransformer
 import os
-from django.core.serializers import serialize
-from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth.models import User
 from rest_framework.decorators import api_view
 from .models import Owner, Member
-
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password, check_password
 
@@ -333,6 +327,7 @@ def generate_text(request):
 
 # View to generate text using Mistral API and retrieve rules based on a tag matching the prompt
 @csrf_exempt
+@extract_token_from_headers
 def get_response_from_prompt(request):
     if request.method == 'POST':
         try:
