@@ -88,7 +88,7 @@ def search_rules(request):
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 
-
+ 
 @csrf_exempt
 @extract_token_from_headers
 def generate_brl_files(request):
@@ -106,7 +106,7 @@ def generate_brl_files(request):
 
 
 
-
+# Helper functions
 def extract_data_from_file(file_path):
     extracted_data = []
     with open(file_path, 'r') as file:
@@ -122,7 +122,7 @@ def extract_data_from_file(file_path):
 
 
 
-
+# Save extracted data to MongoDB with collection named Rule_<tag>
 def save_to_mongodb(data):
     for item in data:
         collection_name = f"Rule_{item['tag']}"
@@ -131,7 +131,7 @@ def save_to_mongodb(data):
 
 
 
-
+# Index the extracted data to Elasticsearch
 def index_to_elasticsearch(data):
     headers = {'Content-Type': 'application/json'}
     bulk_data = ""
@@ -166,7 +166,7 @@ def index_to_elasticsearch(data):
 
 
 
-
+# Search for rules in Elasticsearch based on the tag
 def search_in_elasticsearch(tag):
     headers = {'Content-Type': 'application/json'}
     query = {
@@ -199,7 +199,7 @@ def search_in_elasticsearch(tag):
 
 
 
-
+# Generate a BRL file for a rule
 def generate_brl_file(rule, directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
