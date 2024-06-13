@@ -5,6 +5,7 @@ from tkinter import Tk, filedialog
 from pymongo import MongoClient
 import os
 import urllib3
+import uuid
 
 # Suppress only the single InsecureRequestWarning from urllib3 needed in this context
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -132,6 +133,23 @@ def search_in_elasticsearch(tag):
         print(response.text)
         return None
 
+def generate_brl_file(rule, directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    file_name = os.path.join(directory, rule['name'].replace(" ", "_") + ".brl")
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<ilog.rules.studio.model.brl:ActionRule xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:ilog.rules.studio.model.brl="http://ilog.rules.studio/model/brl.ecore">
+  <name>{rule['name']}</name>
+  <uuid>{uuid.uuid4()}</uuid>
+  <locale>en_US</locale>
+  <definition><![CDATA[{rule['description']}]]></definition>
+</ilog.rules.studio.model.brl:ActionRule>"""
+
+    with open(file_name, 'w') as file:
+        file.write(xml_content)
+    print(f"Generated BRL file: {file_name}")
+
 # Main function to execute the script
 def main():
     create_index_with_mapping()
@@ -162,6 +180,9 @@ def main():
     search_result = search_in_elasticsearch(search_tag)
     if search_result:
         print(search_result)
+        directory = f"Rules_{search_tag}"
+        for rule in search_result:
+            generate_brl_file(rule, directory)
     else:
         print("No results found.")
 
